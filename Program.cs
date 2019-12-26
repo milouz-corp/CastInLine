@@ -17,7 +17,7 @@ namespace CastInLine
         static IPEndPoint endpoint;
         static Sender sender;
         static Receiver rec;
-        static ReceiverStatus recstatus;
+        static ReceiverStatus recStatus;
         static IMediaChannel mediaChannel;
         static MediaStatus mediastatus;
         static IReceiverChannel recChanel;
@@ -26,6 +26,18 @@ namespace CastInLine
         {
             try
             {
+                if (args.Count() == 0 || args.Contains("help"))
+                {
+                    Console.WriteLine("Description:");
+                    Console.WriteLine("\tYou can remotly controle a Google Cast compatible device with the following commands");
+                    Console.WriteLine("");
+                    Console.WriteLine("Usage:");
+                    Console.WriteLine("\tdiscover\t\tlists the devices on the network");
+                    Console.WriteLine("\ttarget IP[:Port]\tspecify the target device of the command");
+                    Console.WriteLine("\tstatus\t\tget the status of the device");
+                    Console.WriteLine("\tplay url [title --] [subtitle --] [poster --]\tplay a media");
+                }
+
                 if (args.Contains("discover"))
                 {
                     Task.Run(detectedCast).Wait();
@@ -42,6 +54,10 @@ namespace CastInLine
                     endpoint = new IPEndPoint(IPAddress.Parse(ep[0]), port);
 
                     Task.Run(connect).Wait();
+                    if (!args.Contains("play"))
+                    {
+                        Task.Run(connectToChannel).Wait();
+                    }
                 }
 
                 string title = null;
@@ -69,47 +85,46 @@ namespace CastInLine
 
                 if (args.Contains("pause"))
                 {
-                    Task.Run(connectToChannel).Wait();
                     Task.Run(pause).Wait();
                 }
 
                 if (args.Contains("resume"))
                 {
-                    Task.Run(connectToChannel).Wait();
                     Task.Run(resume).Wait();
                 }
 
                 if (args.Contains("seek"))
                 {
-                    Task.Run(connectToChannel).Wait();
                     Task.Run(() => seek(double.Parse(args[Array.IndexOf(args, "seek") + 1]))).Wait();
                 }
 
                 if (args.Contains("stop"))
                 {
-                    Task.Run(connectToChannel).Wait();
                     Task.Run(stop).Wait();
+                }
+
+                if (args.Contains("quit"))
+                {
+                    Task.Run(quit).Wait();
                 }
 
                 if (args.Contains("volume"))
                 {
-                    Task.Run(connectToChannel).Wait();
-                    Task.Run(() => volume(double.Parse(args[Array.IndexOf(args, "volume") + 1]))).Wait();
+                    Task.Run(() => volume(float.Parse(args[Array.IndexOf(args, "volume") + 1]))).Wait();
                 }
 
                 if (args.Contains("status"))
                 {
-                    var recStatus = receiverStatus();
                     if (recStatus == null)
                     {
                         Console.WriteLine("Receiver Not Found");
                     }
                     else
                     {
-                        Console.WriteLine("IsIDLE\tDisplayName\tStatusText");
+                        Console.WriteLine("Volume\tIsIDLE\tDisplayName\tStatusText");
                         foreach (var app in recStatus.Applications)
                         {
-                            Console.WriteLine(app.IsIdleScreen.ToString() + '\t' + app.DisplayName + '\t' + app.StatusText);
+                            Console.WriteLine(recStatus.Volume.Level.ToString() + '\t' + app.IsIdleScreen.ToString() + '\t' + app.DisplayName + '\t' + app.StatusText);
                         }
                     }
 
@@ -120,8 +135,8 @@ namespace CastInLine
                     }
                     else
                     {
-                        Console.WriteLine("Volume\tCurrentTime\tPlayerState");
-                        Console.WriteLine(mediastatus.Volume.Level.ToString() + '\t' + mediastatus.CurrentTime.ToString() + '\t' + mediastatus.PlayerState);
+                        Console.WriteLine("CurrentTime\tPlayerState\tMediaUrl");
+                        Console.WriteLine(mediastatus.CurrentTime.ToString() + '\t' + mediastatus.PlayerState + '\t' + mediastatus.Media.ContentId);
                     }
                 }
             }
@@ -146,7 +161,17 @@ namespace CastInLine
             sender = new Sender();
             rec = new Receiver();
             rec.IPEndPoint = endpoint;
+            sender.GetChannel<IReceiverChannel>().StatusChanged += ReceiverChannelStatusChanged;
             await sender.ConnectAsync(rec);
+        }
+
+        private static void ReceiverChannelStatusChanged(object sender, EventArgs e)
+        {
+            recChanel = (IReceiverChannel)sender;
+            Task.Run(async () =>
+            {
+                recStatus = await recChanel.GetStatusAsync();
+            });
         }
 
         public static async Task connectToChannel()
@@ -169,8 +194,14 @@ namespace CastInLine
                 mediaInfo.Metadata.Images = new GoogleCast.Models.Image[1];
                 mediaInfo.Metadata.Images[0] = new GoogleCast.Models.Image() { Url = poster };
             }
-            var mediaStatus = await mediaChannel.LoadAsync(mediaInfo);
 
+            mediastatus = await mediaChannel.LoadAsync(mediaInfo);
+
+        }
+
+        public static async Task openURL(string url)
+        {
+            await sender.LaunchAsync(mediaChannel);
         }
 
         public static async Task pause()
@@ -188,9 +219,9 @@ namespace CastInLine
             await mediaChannel.SeekAsync(time);
         }
 
-        public static async Task volume(double time)
+        public static async Task volume(float volume)
         {
-            // await mediaChannel.(time);
+            await recChanel.SetVolumeAsync(volume);
         }
 
         public static async Task stop()
@@ -198,31 +229,10 @@ namespace CastInLine
             await mediaChannel.StopAsync();
         }
 
-        public static MediaStatus mediaStatus()
+        public static async Task quit()
         {
-            return getStatus<MediaStatus>("urn:x-cast:com.google.cast.media");
+
         }
 
-        public static ReceiverStatus receiverStatus()
-        {
-            return getStatus<ReceiverStatus>("urn:x-cast:com.google.cast.receiver");
-        }
-
-        private static T getStatus<T>(string str)
-        {
-            var statuses = sender.GetStatuses();
-            if (statuses.ContainsKey(str) && statuses[str] != null)
-            {
-                if (statuses[str] is T)
-                {
-                    return (T)statuses[str];
-                }
-                else
-                {
-                    return ((T[])(statuses[str])).FirstOrDefault();
-                }
-            }
-            return default(T);
-        }
     }
 }
