@@ -98,5 +98,5 @@ Tested on Windows 10 and Raspberry PI with mono
 
 # Download Binaries
 
-You can download binaries here [Here](https://github.com/milouz-corp/CastInLine/releases/download/1/Release.zip)
+You can download binaries [Here](https://github.com/milouz-corp/CastInLine/releases/download/1/Release.zip)
 
