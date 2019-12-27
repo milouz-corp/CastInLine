@@ -84,7 +84,7 @@ commands list :
          "Title":"A Movie",
          "Subtitle":"the best one",
          "MetadataType":"Default",
-         "Tracks":{ 
+         "Images":{ 
             "Url":"https://xxxxxxx.jpg",
             "Width":"null",
             "Height":"null"

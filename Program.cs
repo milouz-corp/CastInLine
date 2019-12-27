@@ -213,7 +213,7 @@ namespace CastInLine
                                         images.Add("Url", medatadataImage.Url);
                                         images.Add("Width", medatadataImage.Width);
                                         images.Add("Height", medatadataImage.Height);
-                                        metadata.Add("Tracks", images);
+                                        metadata.Add("Images", images);
                                     }
                                 }
                                 media.Add("Metadata", metadata);
