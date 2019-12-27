@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace CastInLine
@@ -26,21 +25,45 @@ namespace CastInLine
         {
             try
             {
+                var result = new Dictionary<string, object>();
+
+                var errors = new List<object>();
+                result.Add("errors", errors);
+
                 if (args.Count() == 0 || args.Contains("help"))
                 {
                     Console.WriteLine("Description:");
-                    Console.WriteLine("\tYou can remotly controle a Google Cast compatible device with the following commands");
+                    Console.WriteLine("\tYou can remotly control a Google Cast compatible device with the following commands and get the result as json format");
                     Console.WriteLine("");
                     Console.WriteLine("Usage:");
                     Console.WriteLine("\tdiscover\t\tlists the devices on the network");
                     Console.WriteLine("\ttarget IP[:Port]\tspecify the target device of the command");
+                    Console.WriteLine("\tpauseAtEnd\twait for input key to close (for debug purpose)");
                     Console.WriteLine("\tstatus\t\tget the status of the device");
-                    Console.WriteLine("\tplay url [title --] [subtitle --] [poster --]\tplay a media");
+                    Console.WriteLine("\tplay {url} [title {text}] [subtitle {text} [image {url}]\tplay a media");
+                    Console.WriteLine("\tpause\tpause the current media");
+                    Console.WriteLine("\tresume\tresume the current media");
+                    Console.WriteLine("\tstop\tstop the current media");
+                    Console.WriteLine("\tvolume {value} \tset the volume (0->1)");
+                    Console.WriteLine("\tseek {value} \tset player position is seconds");
                 }
 
                 if (args.Contains("discover"))
                 {
-                    Task.Run(detectedCast).Wait();
+                    Task.Run(async () =>
+                   {
+                       var receivers = await detectedCast();
+                       var devices = new List<object>();
+                       foreach (var rec in receivers)
+                       {
+                           var device = new Dictionary<string, object>();
+                           device.Add("FriendlyName", rec.FriendlyName);
+                           device.Add("IPEndPoint", rec.IPEndPoint.ToString());
+                           device.Add("ID", rec.Id);
+                           devices.Add(device);
+                       }
+                       result.Add("devices", devices);
+                   }).Wait();
                 }
 
                 if (args.Contains("target"))
@@ -72,40 +95,50 @@ namespace CastInLine
                     subtitle = args[Array.IndexOf(args, "subtitle") + 1];
                 }
 
-                string poster = null;
-                if (args.Contains("poster"))
+                string image = null;
+                if (args.Contains("image"))
                 {
-                    poster = args[Array.IndexOf(args, "poster") + 1];
+                    image = args[Array.IndexOf(args, "image") + 1];
                 }
 
                 if (args.Contains("play"))
                 {
-                    Task.Run(() => play(args[Array.IndexOf(args, "play") + 1], title, subtitle, poster)).Wait();
+                    var index = Array.IndexOf(args, "play");
+                    if (args.Count() <= index + 1)
+                    {
+                        errors.Add("play parameter missing");
+                    }
+                    else
+                    {
+                        Task.Run(() => play(args[index + 1], title, subtitle, image)).Wait();
+                    }
                 }
 
-                if (args.Contains("pause"))
+                if (args.Contains("pause") || args.Contains("resume") || args.Contains("seek") || args.Contains("stop"))
                 {
-                    Task.Run(pause).Wait();
-                }
-
-                if (args.Contains("resume"))
-                {
-                    Task.Run(resume).Wait();
-                }
-
-                if (args.Contains("seek"))
-                {
-                    Task.Run(() => seek(double.Parse(args[Array.IndexOf(args, "seek") + 1]))).Wait();
-                }
-
-                if (args.Contains("stop"))
-                {
-                    Task.Run(stop).Wait();
-                }
-
-                if (args.Contains("quit"))
-                {
-                    Task.Run(quit).Wait();
+                    if (mediaChannel.Status == null || mediaChannel.Status.Count() == 0)
+                    {
+                        errors.Add("cannot connect to mediaChannel");
+                    }
+                    else
+                    {
+                        if (args.Contains("pause"))
+                        {
+                            Task.Run(pause).Wait();
+                        }
+                        if (args.Contains("resume"))
+                        {
+                            Task.Run(resume).Wait();
+                        }
+                        if (args.Contains("seek"))
+                        {
+                            Task.Run(() => seek(double.Parse(args[Array.IndexOf(args, "seek") + 1]))).Wait();
+                        }
+                        if (args.Contains("stop"))
+                        {
+                            Task.Run(stop).Wait();
+                        }
+                    }
                 }
 
                 if (args.Contains("volume"))
@@ -115,45 +148,134 @@ namespace CastInLine
 
                 if (args.Contains("status"))
                 {
+                    var receiver = new Dictionary<string, object>();
                     if (recStatus == null)
                     {
-                        Console.WriteLine("Receiver Not Found");
+                        receiver.Add("Status", "notfound");
                     }
                     else
                     {
-                        Console.WriteLine("Volume\tIsIDLE\tDisplayName\tStatusText");
+                        receiver.Add("Volume", recStatus.Volume.Level.ToString());
+
                         foreach (var app in recStatus.Applications)
                         {
-                            Console.WriteLine(recStatus.Volume.Level.ToString() + '\t' + app.IsIdleScreen.ToString() + '\t' + app.DisplayName + '\t' + app.StatusText);
+                            var application = new Dictionary<string, object>();
+                            application.Add("AppId", app.AppId);
+                            application.Add("IsIdleScreen", app.IsIdleScreen);
+                            application.Add("DisplayName", app.DisplayName);
+                            application.Add("StatusText", app.StatusText);
+                            application.Add("SessionId", app.SessionId);
+                            application.Add("TransportId", app.TransportId);
+                            receiver.Add("application", application);
                         }
-                    }
 
+                    }
+                    result.Add("receiver", receiver);
+
+                    var media = new Dictionary<string, object>();
 
                     if (mediastatus == null)
                     {
-                        Console.WriteLine("MediaChannel Not Found");
+                        media.Add("Status", "notfound");
                     }
                     else
                     {
-                        Console.WriteLine("CurrentTime\tPlayerState\tMediaUrl");
-                        Console.WriteLine(mediastatus.CurrentTime.ToString() + '\t' + mediastatus.PlayerState + '\t' + mediastatus.Media.ContentId);
+                        media.Add("CurrentTime", mediastatus.CurrentTime);
+                        media.Add("PlayerState", mediastatus.PlayerState);
+                        if (mediastatus.Media != null)
+                        {
+                            media.Add("ContentId", mediastatus.Media.ContentId);
+                            media.Add("ContentType", mediastatus.Media.ContentType);
+                            media.Add("Duration", mediastatus.Media.Duration);
+                            media.Add("StreamType", mediastatus.Media.StreamType);
+
+                            foreach (var mediatrack in mediastatus.Media.Tracks)
+                            {
+                                var track = new Dictionary<string, object>();
+                                track.Add("Name", mediatrack.Name);
+                                track.Add("Language", mediatrack.Language);
+                                track.Add("SubType", mediatrack.SubType);
+                                track.Add("TrackId", mediatrack.TrackId);
+                                media.Add("Tracks", track);
+                            }
+                            if (mediastatus.Media.Metadata != null)
+                            {
+                                var metadata = new Dictionary<string, object>();
+                                metadata.Add("Title", mediastatus.Media.Metadata.Title);
+                                metadata.Add("Subtitle", mediastatus.Media.Metadata.Subtitle);
+                                metadata.Add("MetadataType", mediastatus.Media.Metadata.MetadataType);
+
+                                if (mediastatus.Media.Metadata.Images != null)
+                                {
+                                    foreach (var medatadataImage in mediastatus.Media.Metadata.Images)
+                                    {
+                                        var images = new Dictionary<string, object>();
+                                        images.Add("Url", medatadataImage.Url);
+                                        images.Add("Width", medatadataImage.Width);
+                                        images.Add("Height", medatadataImage.Height);
+                                        metadata.Add("Tracks", images);
+                                    }
+                                }
+                                media.Add("Metadata", metadata);
+                            }
+                        }
                     }
+                    result.Add("media", media);
                 }
+                Console.WriteLine(printJson(result));
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.ToString());
             }
+
+            if (args.Contains("pauseAtEnd"))
+            {
+                Console.ReadKey();
+            }
+
         }
 
-        public static async Task detectedCast()
+        private static string addSlashes(string value)
         {
-            var receivers = (await new DeviceLocator().FindReceiversAsync());
-            Console.WriteLine("CastName\tIP:Port\tID");
-            foreach (var rec in receivers)
+            return value.Replace("\"", "\\\"");
+        }
+
+        private static string printJson(object data)
+        {
+            var values = new List<string>();
+
+            if (data == null)
             {
-                Console.WriteLine(rec.FriendlyName + "\t" + rec.IPEndPoint.ToString() + "\t" + rec.Id);
+                return "\"null\"";
             }
+            else if (data.GetType() == typeof(Dictionary<string, object>))
+            {
+                foreach (var item in (Dictionary<string, object>)data)
+                {
+                    values.Add("\"" + addSlashes(item.Key) + "\" : " + printJson(item.Value));
+                }
+                return "{" + string.Join(",", values) + "}";
+            }
+            else if (data.GetType() == typeof(List<object>))
+            {
+                foreach (var item in (List<object>)data)
+                {
+                    values.Add(printJson(item));
+                }
+                return "[" + string.Join(",", values) + "]";
+
+            }
+            else
+            {
+                return "\"" + addSlashes(data.ToString()) + "\"";
+            }
+
+        }
+
+        public static async Task<IEnumerable<IReceiver>> detectedCast()
+        {
+            return (await new DeviceLocator().FindReceiversAsync());
         }
 
         public static async Task connect()
@@ -176,12 +298,16 @@ namespace CastInLine
 
         public static async Task connectToChannel()
         {
-            mediaChannel = sender.GetChannel<IMediaChannel>();
-            mediastatus = await mediaChannel.GetStatusAsync();
+            try
+            {
+                mediaChannel = sender.GetChannel<IMediaChannel>();
+                mediastatus = await mediaChannel.GetStatusAsync();
+            }
+            catch { }
         }
 
 
-        public static async Task play(string url, string title, string subtitle, string poster)
+        public static async Task play(string url, string title, string subtitle, string image)
         {
             mediaChannel = sender.GetChannel<IMediaChannel>();
             await sender.LaunchAsync(mediaChannel);
@@ -189,19 +315,12 @@ namespace CastInLine
             mediaInfo.Metadata = new GenericMediaMetadata();
             if (title != null) mediaInfo.Metadata.Title = title;
             if (subtitle != null) mediaInfo.Metadata.Subtitle = subtitle;
-            if (poster != null)
+            if (image != null)
             {
                 mediaInfo.Metadata.Images = new GoogleCast.Models.Image[1];
-                mediaInfo.Metadata.Images[0] = new GoogleCast.Models.Image() { Url = poster };
+                mediaInfo.Metadata.Images[0] = new GoogleCast.Models.Image() { Url = image };
             }
-
             mediastatus = await mediaChannel.LoadAsync(mediaInfo);
-
-        }
-
-        public static async Task openURL(string url)
-        {
-            await sender.LaunchAsync(mediaChannel);
         }
 
         public static async Task pause()
@@ -219,20 +338,23 @@ namespace CastInLine
             await mediaChannel.SeekAsync(time);
         }
 
-        public static async Task volume(float volume)
-        {
-            await recChanel.SetVolumeAsync(volume);
-        }
-
         public static async Task stop()
         {
             await mediaChannel.StopAsync();
         }
 
-        public static async Task quit()
+        public static async Task openURL(string url)
         {
-
+            await sender.LaunchAsync(mediaChannel);
         }
+
+
+
+        public static async Task volume(float volume)
+        {
+            await recChanel.SetVolumeAsync(volume);
+        }
+
 
     }
 }
