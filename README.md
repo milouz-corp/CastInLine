@@ -1,10 +1,10 @@
-# CastInLine #
+# CastInLine 
 Google Cast remote in command line giving the result in json format
 
-##Description:##
-        You can remotly control a Google Cast compatible device with the following commands and get the result as json format
+## Description:
+You can remotly control a Google Cast compatible device with the following commands and get the result as json format
 
-##Usage:
+## Usage:
 commands list :
 
     discover					lists the devices on the network
