@@ -49,7 +49,7 @@ commands list :
    ]
 }
 ```
-### get Status
+### Get Status
 `CastInLine.exe  target 192.168.0.38 status`
 ```json
 { 
@@ -95,3 +95,8 @@ commands list :
 ```
 ## More
 Tested on Windows 10 and Raspberry PI with mono
+
+# Download Binaries
+
+You can download binaries here [Here](https://github.com/milouz-corp/CastInLine/releases/download/1/Release.zip)
+
