@@ -94,7 +94,7 @@ commands list :
 }
 ```
 ## More
-Tested on Windows 10 and Raspberry PI with mono
+Tested on Windows© 10 and Raspberry PI with mono
 
 # Download Binaries
 
